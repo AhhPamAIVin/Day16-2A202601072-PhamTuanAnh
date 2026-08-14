@@ -79,16 +79,45 @@ class Critic(Middleware):
     name = "critic"
 
     def after_agent(self, ctx, report):
-        # TODO (§2): khoảng 10-25 dòng.
-        #  1. Lấy report["claims"]; nếu rỗng hoặc không phải list thì thôi.
-        #  2. Với mỗi claim: nếu claim["text"] có trong ctx.observed_text
-        #     -> giữ nguyên (KHÔNG sửa chữ).
-        #  3. Nếu không: thử tách câu ghép (trường hợp (c) ở docstring).
-        #     Tách được -> giữ cả hai nửa, mỗi nửa gắn doc_id của tài liệu
-        #     thật sự chứa nó, và đặt report["abstain"] = True.
-        #  4. Không tách được -> đây là bịa: bỏ claim đi.
-        #  5. Nếu không còn claim nào: report["abstain"] = True,
-        #     claims = [], citations = [], và viết lại "answer" nói rõ là
-        #     không đủ căn cứ.
-        #  6. Cập nhật report["citations"] cho khớp với claims còn lại.
-        return report  # <- mặc định KHÔNG LÀM GÌ: agent vẫn chạy được
+        claims = report.get("claims")
+        if not isinstance(claims, list) or not claims:
+            return report
+
+        kept = []
+        docs = getattr(getattr(ctx, "corpus", None), "docs", ())
+        connector = " v\u00e0 "
+        for claim in claims:
+            if not isinstance(claim, dict):
+                continue
+            text = claim.get("text")
+            if isinstance(text, str) and ctx.saw(text):
+                kept.append(claim)
+                continue
+            if not isinstance(text, str):
+                continue
+            for split_at in (i for i in range(len(text)) if text.startswith(connector, i)):
+                halves = (text[:split_at].strip(), text[split_at + len(connector):].strip())
+                sources = [
+                    next((doc for doc in docs if half in doc.body and ctx.saw(half)), None)
+                    for half in halves
+                ]
+                if all(sources) and sources[0].doc_id != sources[1].doc_id:
+                    kept.extend(
+                        {**claim, "text": half, "doc_id": source.doc_id}
+                        for half, source in zip(halves, sources)
+                    )
+                    report["abstain"] = True
+                    break
+
+        report["claims"] = kept
+        report["citations"] = list(dict.fromkeys(
+            claim.get("doc_id") for claim in kept if claim.get("doc_id")
+        ))
+        if not kept:
+            report.update(
+                answer="Insufficient evidence in the observed documents.",
+                abstain=True,
+                claims=[],
+                citations=[],
+            )
+        return report
