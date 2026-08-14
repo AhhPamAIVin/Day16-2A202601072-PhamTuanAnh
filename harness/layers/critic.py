@@ -70,6 +70,7 @@ Xem `harness/middleware.py` để biết thứ tự các hook.
 
 from __future__ import annotations
 
+from arena.model import parse_output
 from harness.middleware import Middleware
 
 
@@ -77,6 +78,42 @@ class Critic(Middleware):
     """Xoá những gì bằng chứng không đỡ; abstain khi không còn gì."""
 
     name = "critic"
+
+    def wrap_model_call(self, ctx, call, messages):
+        response = call(messages)
+        if ctx.state.get("critic_model_revisions", 0) >= 1:
+            return response
+        parsed = parse_output(response.text)
+        report = parsed.final if parsed.kind == "final" else None
+        claims = report.get("claims") if isinstance(report, dict) else None
+        if not isinstance(claims, list):
+            return response
+
+        full_lines = []
+        for claim in claims:
+            if not isinstance(claim, dict):
+                continue
+            text = claim.get("text")
+            doc = ctx.corpus.get(claim.get("doc_id")) if ctx.corpus else None
+            if not isinstance(text, str) or not doc or doc.body not in ctx.observed_text:
+                continue
+            line = next((line for line in doc.body.splitlines() if text in line), None)
+            if line and text != line and len(line) <= 400:
+                full_lines.append((doc.doc_id, line))
+        if not full_lines:
+            return response
+
+        ctx.state["critic_model_revisions"] = 1
+        evidence = "\n".join(f"- {doc_id}: {line}" for doc_id, line in full_lines)
+        feedback = (
+            "FINAL trước đã cắt mất mệnh đề trong dòng bằng chứng. Hãy xuất lại FINAL "
+            "với claim.text chép NGUYÊN VĂN TOÀN BỘ dòng tương ứng dưới đây; giữ đúng "
+            "doc_id, không thêm hoặc sửa ký tự:\n" + evidence
+        )
+        return call(messages + [
+            {"role": "assistant", "content": response.text},
+            {"role": "user", "content": feedback},
+        ])
 
     def after_agent(self, ctx, report):
         claims = report.get("claims")

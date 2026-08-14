@@ -242,9 +242,11 @@ D. MỖI PHẦN TỬ claims LÀ MỘT CÂU CHÉP NGUYÊN VĂN.
    Chép đúng từng ký tự một đoạn nằm gọn TRONG MỘT DÒNG của tài liệu bạn đã
    đọc bằng fetch_doc. Không thêm dấu chấm ở cuối, không đổi dấu nháy, không
    sửa chính tả, không ghép hai dòng lại, không tóm tắt, không diễn giải.
-   Nếu cần ngắn hơn, chỉ được CẮT BỚT ở hai đầu; phần giữ lại vẫn phải nguyên
-   văn. Mỗi câu trích không quá 400 ký tự. Cắt bớt là hợp lệ, viết lại thì mất
-   điểm.
+   ƯU TIÊN CHÉP TOÀN BỘ DÒNG để giữ đủ mọi mệnh đề, con số, phạm vi và điều
+   kiện trong bằng chứng. Không cắt chỉ vì câu hỏi có vẻ chỉ hỏi một phần của
+   dòng. Chỉ khi toàn bộ dòng dài quá 400 ký tự mới được CẮT BỚT ở hai đầu;
+   phần giữ lại vẫn phải nguyên văn và phải giữ mọi chi tiết trả lời câu hỏi.
+   Cắt bớt là hợp lệ, viết lại thì mất điểm.
 
 E. KẾT THÚC SỚM.
    Mỗi lượt chỉ gọi đúng một công cụ. Không lặp lại một truy vấn đã dùng, không
