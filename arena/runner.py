@@ -1272,6 +1272,9 @@ class ProvenanceModel:
         self.prompts: list[str] = []
         self.outputs: list[str] = []
         self.param_used = ""
+        #: Cleared the first time an endpoint refuses an explicit
+        #: temperature; see `_post_with_param`.
+        self._send_temperature = True
         self._param_order = self._param_plan(max_tokens_param)
         self._accepts_kwargs = _accepts_keyword_arguments(inner)
         # Everything the runner can account for in a prompt. Grows as the
@@ -1433,6 +1436,26 @@ class ProvenanceModel:
                 return name
         return None  # pragma: no cover - MAX_TOKENS_PARAMS always has two
 
+    def _post_negotiating_temperature(self, payload):
+        """POST, dropping an explicit temperature if the endpoint refuses it.
+
+        The frozen `RealModel._post` raises urllib's generic "HTTP Error
+        400: Bad Request" without reading the body, so the endpoint's own
+        reason never reaches us. Measured against gpt-5.6-*: it accepts
+        only the DEFAULT temperature and 400s on an explicit 0.0, exactly
+        as it 400s on `max_tokens` by name. So: send it once, and if the
+        call fails at all while we are still sending it, retry without it
+        and remember. Cost is one wasted call per session, not per turn.
+        """
+        try:
+            return self.inner._post(payload)
+        except Exception:
+            if not self._send_temperature or "temperature" not in payload:
+                raise
+            self._send_temperature = False
+            payload.pop("temperature", None)
+            return self.inner._post(payload)
+
     def _post_with_param(self, messages, param: str) -> ModelResponse:
         """One chat-completions POST with an explicit budget parameter.
 
@@ -1446,11 +1469,17 @@ class ProvenanceModel:
         payload = {
             "model": self.inner.model,
             "messages": [dict(message) for message in messages],
-            "temperature": self.temperature,
             param: self.max_tokens,
         }
+        # Some endpoints (measured: gpt-5.6-*) accept ONLY the default
+        # temperature and reject an explicit 0.0 with a 400, exactly as
+        # they reject `max_tokens` by name. Negotiate it the same way:
+        # send it until the endpoint refuses, then stop sending it for
+        # the rest of the session. Cost is one wasted call per session.
+        if self._send_temperature:
+            payload["temperature"] = self.temperature
         try:
-            data = self.inner._post(payload)
+            data = self._post_negotiating_temperature(payload)
         except RealModelError:
             raise
         except Exception as exc:
@@ -1486,7 +1515,31 @@ class ProvenanceModel:
 #: Substrings an endpoint uses when it rejects the output-budget
 #: parameter by name. Matched case-insensitively against the
 #: `RealModelError` message, which carries the endpoint's own body.
+#: Substrings an endpoint uses when it rejects an explicit `temperature`.
+#: Measured against gpt-5.6-*: "does not support 0 with this model. Only
+#: the default (1) value is supported."
+_TEMPERATURE_REJECTION_HINTS = (
+    "temperature",
+    # The frozen `RealModel._post` raises urllib's generic "HTTP Error
+    # 400: Bad Request" WITHOUT reading the response body, so the
+    # endpoint's own reason never reaches us. A bare 400 after the
+    # budget parameter has already been negotiated is therefore the only
+    # evidence available that the explicit temperature is the remaining
+    # objection — measured against gpt-5.6-*, where it is.
+    "400",
+    "bad request",
+)
+
+
+def _rejects_temperature(exc) -> bool:
+    """Did the endpoint refuse the explicit temperature, specifically?"""
+    message = str(exc).lower()
+    return any(hint in message for hint in _TEMPERATURE_REJECTION_HINTS)
+
+
 _PARAM_REJECTION_HINTS = (
+    "400",
+    "bad request",
     "max_tokens",
     "max_completion_tokens",
     "unsupported_parameter",

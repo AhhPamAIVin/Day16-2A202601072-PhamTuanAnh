@@ -1429,3 +1429,81 @@ def test_the_runner_never_flags_an_honest_run_for_review():
         assert result.flags == (), (brief["brief_id"], result.flags)
         assert result.error == ""
         assert result.warnings == ()
+
+
+# ---------------------------------------------------------------------------
+# Temperature negotiation
+#
+# Measured against a live gpt-5.6-* endpoint, which refuses BOTH the
+# `max_tokens` spelling AND an explicit `temperature: 0.0` (it accepts only
+# its default). The frozen `arena/model.py` hardcodes both, and the frozen
+# `RealModel._post` raises urllib's generic "HTTP Error 400: Bad Request"
+# WITHOUT reading the response body -- so the endpoint's own reason never
+# reaches us and hint-matching on the message cannot work. The runner
+# therefore negotiates on the FACT of failure, not its stated reason.
+# ---------------------------------------------------------------------------
+
+
+class _OpaqueEndpoint(RealModel):
+    """The measured gpt-5.6 shape: refuses two parameters, explains neither.
+
+    NO NETWORK -- `_post` is overridden.
+    """
+
+    def __init__(self, reject_max_tokens=True, reject_temperature=True):
+        super().__init__(base_url="https://example.invalid/v1", api_key="k", model="m")
+        self.reject_max_tokens = reject_max_tokens
+        self.reject_temperature = reject_temperature
+        self.posted: list = []
+
+    def _post(self, payload):
+        self.posted.append(dict(payload))
+        opaque = "Gọi endpoint thất bại: HTTP Error 400: Bad Request"
+        if self.reject_max_tokens and "max_tokens" in payload:
+            raise RealModelError(opaque)
+        if self.reject_temperature and "temperature" in payload:
+            raise RealModelError(opaque)
+        return {
+            "choices": [{"message": {"content": 'THOUGHT: x\nFINAL: {"abstain": true}'}}],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+        }
+
+
+def test_an_endpoint_refusing_an_explicit_temperature_still_completes():
+    endpoint = _OpaqueEndpoint()
+    client = _client(endpoint)
+    response = client.complete([{"role": "user", "content": "hi"}])
+    assert response.text.startswith("THOUGHT:")
+    assert "temperature" not in endpoint.posted[-1]
+    assert endpoint.posted[-1]["max_completion_tokens"] == DEFAULT_MAX_TOKENS
+
+
+def test_an_opaque_400_is_enough_to_negotiate_both_parameters():
+    """No hint string is available -- convergence must not depend on one."""
+    endpoint = _OpaqueEndpoint()
+    client = _client(endpoint)
+    client.complete([{"role": "user", "content": "hi"}])
+    accepted = endpoint.posted[-1]
+    assert "max_tokens" not in accepted and "temperature" not in accepted
+    assert client.param_used == "max_completion_tokens"
+
+
+def test_the_temperature_verdict_is_remembered_for_the_session():
+    endpoint = _OpaqueEndpoint()
+    client = _client(endpoint)
+    for _ in range(3):
+        client.complete([{"role": "user", "content": "hi"}])
+    # Probes are paid once, not once per turn: three good calls at the end.
+    good = [p for p in endpoint.posted if "temperature" not in p and "max_tokens" not in p]
+    assert len(good) == 3
+    with_temp = [p for p in endpoint.posted if "temperature" in p]
+    assert len(with_temp) <= 2, with_temp
+
+
+def test_an_endpoint_happy_with_temperature_keeps_receiving_it():
+    """The negotiation must not strip temperature from endpoints that want it."""
+    endpoint = _OpaqueEndpoint(reject_max_tokens=False, reject_temperature=False)
+    client = _client(endpoint)
+    client.complete([{"role": "user", "content": "hi"}])
+    assert endpoint.posted[-1]["temperature"] == 0.0
+    assert client.param_used == "max_tokens"
