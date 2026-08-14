@@ -225,7 +225,8 @@ B. DÒNG KẾT LUẬN.
    không viết thêm bất cứ ký tự nào.
 
 C. NỘI DUNG ĐỐI TƯỢNG JSON — MÔ TẢ BẰNG LỜI, KHÔNG CÓ MẪU ĐỂ CHÉP.
-   Đối tượng có đúng bốn khóa, tên khóa viết thường:
+   Đối tượng có bốn khóa bắt buộc, tên khóa viết thường (có thể thêm một khóa
+   thứ năm tuỳ chọn — xem mục F):
      - một khóa tên answer, giá trị là chuỗi tiếng Việt trả lời thẳng câu hỏi,
        dưới 600 ký tự;
      - một khóa tên citations, giá trị là mảng các chuỗi mã tài liệu;
@@ -248,7 +249,15 @@ D. MỖI PHẦN TỬ claims LÀ MỘT CÂU CHÉP NGUYÊN VĂN.
 E. KẾT THÚC SỚM.
    Mỗi lượt chỉ gọi đúng một công cụ. Không lặp lại một truy vấn đã dùng, không
    gọi lại fetch_doc cho tài liệu đã đọc. Ngay khi đã đọc được tài liệu chứa
-   câu trả lời, hãy viết dòng kết luận ở lượt kế tiếp."""
+   câu trả lời, hãy viết dòng kết luận ở lượt kế tiếp.
+
+F. KHI CÂU HỎI YÊU CẦU CHỌN MỘT KẾT LUẬN.
+   Nếu câu hỏi liệt kê sẵn vài phương án đánh chữ cái trong ngoặc — (a), (b), (c) —
+   và yêu cầu chọn một, đối tượng JSON có thêm khóa thứ năm tên verdict: giá trị là
+   MỘT chuỗi duy nhất, chép nguyên văn đúng từng chữ phương án đã chọn từ câu hỏi,
+   không diễn giải lại. Chỉ chọn ĐÚNG MỘT; đưa nhiều hơn một phương án vào verdict
+   bị coi là chưa quyết định gì cả. Trường answer vẫn phải trả lời đầy đủ câu hỏi
+   như bình thường. Câu hỏi không liệt kê phương án nào thì bỏ hẳn khóa verdict."""
 
 
 def real_model_system_prompt(base: str = ARENA_SYSTEM_PROMPT) -> str:

@@ -145,11 +145,13 @@ Hai điều cần biết trước khi bắt đầu:
 
 - **`scripts/run_practice.py` tự cài năm layer đúng thứ tự.** Bạn không phải wire gì cả,
   chỉ điền phần TODO.
-- **Trong vòng tính điểm, `Doc.tags` LUÔN RỖNG.** Các nhãn bẫy (`outdated`,
-  `contradiction`, `injection`…) bị gỡ khỏi corpus mà code của bạn cầm. Ở vòng luyện tập
-  chúng vẫn còn trên đĩa — bạn *hard-code được*, và điều đó được nói thẳng ra ở đây thay
-  vì giấu đi. Nhưng đọc nhãn là tra bảng, không phải kỹ năng lab này chấm, nên một layer
-  xây trên `tags` sẽ về 0 đúng vào lúc quan trọng nhất.
+- **Qua `ctx.corpus`, `Doc.tags` LUÔN RỖNG — cả ở vòng luyện tập lẫn vòng tính điểm.**
+  Các nhãn bẫy (`outdated`, `contradiction`, `injection`…) bị gỡ khỏi corpus mà code của
+  bạn cầm ngay khi runner dựng lên nó, không phải chỉ lúc chấm điểm. Ở vòng luyện tập
+  seed 42, file TRÊN ĐĨA `data/corpus/*.json` (khác với `ctx.corpus`) vẫn còn nhãn — bạn
+  *hard-code được từ đó*, và điều đó được nói thẳng ra ở đây thay vì giấu đi. Nhưng đọc
+  nhãn là tra bảng, không phải kỹ năng lab này chấm, nên một layer xây trên `tags` sẽ về 0
+  đúng vào lúc quan trọng nhất.
 
 ---
 
